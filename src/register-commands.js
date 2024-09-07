@@ -1,13 +1,11 @@
 require('dotenv').config();
 const { REST, Routes, Client, GatewayIntentBits } = require('discord.js');
 const axios = require('axios');
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 
-// Set up OpenAI configuration
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY, // Make sure to set your OpenAI API key in .env
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
-const openai = new OpenAIApi(configuration);
 
 const commands = [
   {
@@ -40,7 +38,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
 
     console.log('Slash commands were registered successfully!');
   } catch (error) {
-    console.log(`There was an error: ${error}`);
+    console.log(`There was an error registering commands: ${error}`);
   }
 })();
 
@@ -55,24 +53,22 @@ client.on('interactionCreate', async (interaction) => {
 
   const { commandName, options } = interaction;
 
-  if (commandName === 'hey') {
-    await interaction.reply('Hey!');
-  } else if (commandName === 'ping') {
-    await interaction.reply('Pong!');
-  } else if (commandName === 'wiki') {
+  if (commandName === 'wiki') {
     const query = options.getString('query');
-    await interaction.deferReply(); 
+    await interaction.deferReply();
 
     try {
       const response = await axios.get(
-        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
-          query
-        )}`
+        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`
       );
 
       const { extract } = response.data;
 
-      const completion = await openai.createChatCompletion({
+      if (!extract) {
+        throw new Error('No extract found for the given query.');
+      }
+
+      const completion = await openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
           { role: 'system', content: 'Summarize the following text.' },
@@ -82,14 +78,14 @@ client.on('interactionCreate', async (interaction) => {
 
       const summary = completion.data.choices[0].message.content;
 
-      await interaction.editReply({
-        content: `**Summary:**\n${summary}`,
-      });
+      await interaction.editReply({ content: `**Summary:**\n${summary}` });
     } catch (error) {
-      await interaction.editReply('Could not find anything on Wikipedia or summarize it.');
       console.error(`Error fetching Wikipedia data or summarizing: ${error}`);
+      await interaction.editReply('Could not find anything on Wikipedia or summarize it.');
     }
   }
 });
+
+
 
 client.login(process.env.TOKEN);
